@@ -1,0 +1,34 @@
+# R session and workspace files
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+
+# RStudio project and user state
+.Rproj.user/
+
+# Package/build artifacts
+*.tar.gz
+/*.Rcheck/
+
+# Reports and notebooks
+*.utf8.md
+*.knit.md
+
+# Dependency management
+renv/library/
+packrat/lib/
+packrat/src/
+
+# OS/editor temporary files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# Local secrets
+.Renviron
+
+# Editor settings
+.vscode/
