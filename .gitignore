@@ -14,6 +14,7 @@
 # Reports and notebooks
 *.utf8.md
 *.knit.md
+Rplots.pdf
 
 # Dependency management
 renv/library/

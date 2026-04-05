@@ -43,7 +43,6 @@ La app esta orientada a tres momentos del trabajo experimental:
 
 El proyecto incluye workbooks listos para probar cada familia de diseno:
 
-- `doe_example_workbook.xlsx`: ejemplo base, equivalente al factorial completo
 - `doe_example_full_factorial.xlsx`
 - `doe_example_fractional_factorial.xlsx`
 - `doe_example_plackett_burman.xlsx`
