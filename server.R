@@ -16,6 +16,7 @@ source("doe_openai.R", local = TRUE)
 #' @keywords internal
 server <- function(input, output, session) {
   analysis_state <- reactiveVal(NULL)
+  interpretation_state <- reactiveVal(NULL)
 
   workbook_plan_bundle <- reactive({
     req(input$execution_file)
@@ -393,6 +394,8 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$run_analysis, {
+    interpretation_state(NULL)
+
     if (is.null(current_plan()) || is.null(analysis_dataset())) {
       analysis_state(list(ok = FALSE, message = "Falta plan o datos de ejecucion para correr el analisis."))
       showNotification("Falta plan o datos de ejecucion para correr el analisis.", type = "error", duration = 8)
@@ -508,10 +511,10 @@ server <- function(input, output, session) {
   outputOptions(output, "analysis_tables", suspendWhenHidden = FALSE)
   outputOptions(output, "analysis_plots", suspendWhenHidden = FALSE)
 
-  interpretation_attempt <- eventReactive(input$run_interpretation, {
+  observeEvent(input$run_interpretation, {
     req(current_analysis())
 
-    tryCatch(
+    result <- tryCatch(
       {
         plot_files <- character()
         if (!is.null(current_analysis()$plots) && length(current_analysis()$plots) > 0) {
@@ -540,14 +543,16 @@ server <- function(input, output, session) {
         list(ok = FALSE, text = conditionMessage(e))
       }
     )
-  })
+
+    interpretation_state(result)
+  }, ignoreInit = TRUE)
 
   output$interpretation_status <- renderText({
-    if (is.null(interpretation_attempt())) {
+    if (is.null(interpretation_state())) {
       return("Sin interpretacion generada.")
     }
 
-    if (isTRUE(interpretation_attempt()$ok)) {
+    if (isTRUE(interpretation_state()$ok)) {
       "Interpretacion generada."
     } else {
       "No se pudo generar la interpretacion."
@@ -555,15 +560,15 @@ server <- function(input, output, session) {
   })
 
   output$interpretation_text <- renderUI({
-    req(interpretation_attempt())
+    req(interpretation_state())
     card(
       card_body(
         tags$div(
           style = paste(
             "white-space: pre-wrap; line-height: 1.5;",
-            if (isTRUE(interpretation_attempt()$ok)) "" else "color: #b91c1c;"
+            if (isTRUE(interpretation_state()$ok)) "" else "color: #b91c1c;"
           ),
-          interpretation_attempt()$text
+          interpretation_state()$text
         )
       )
     )
@@ -615,8 +620,8 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(current_plan())
-      interpretation_text <- if (!is.null(interpretation_attempt()) && isTRUE(interpretation_attempt()$ok)) {
-        interpretation_attempt()$text
+      interpretation_text <- if (!is.null(interpretation_state()) && isTRUE(interpretation_state()$ok)) {
+        interpretation_state()$text
       } else {
         NULL
       }

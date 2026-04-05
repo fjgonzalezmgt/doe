@@ -841,6 +841,33 @@ ensure_analysis_columns <- function(df, factors, response_col) {
   visible_df
 }
 
+#' @title Completar metadatos de factores
+#' @description Asegura columnas derivadas necesarias para analisis y visualizacion.
+#' @param factors Tabla de factores.
+#' @return `data.frame` con columnas `Center` y `Step` disponibles.
+#' @keywords internal
+ensure_factor_metadata <- function(factors) {
+  if (!"Center" %in% names(factors)) {
+    factors$Center <- NA_real_
+    numeric_idx <- factors$Type == "Numerico"
+    factors$Center[numeric_idx] <- (
+      as.numeric(factors$Low[numeric_idx]) +
+        as.numeric(factors$High[numeric_idx])
+    ) / 2
+  }
+
+  if (!"Step" %in% names(factors)) {
+    factors$Step <- NA_real_
+    numeric_idx <- factors$Type == "Numerico"
+    factors$Step[numeric_idx] <- (
+      as.numeric(factors$High[numeric_idx]) -
+        as.numeric(factors$Low[numeric_idx])
+    ) / 2
+  }
+
+  factors
+}
+
 #' @title Asegurar columnas codificadas
 #' @description Crea columnas `coded_*` faltantes a partir de niveles reales.
 #' @param df Tabla de datos.
@@ -1007,6 +1034,296 @@ build_qq_residuals_plot <- function(fit_df, response_col) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
+#' @title Formatear valor de factor
+#' @description Convierte un valor de factor a texto legible para leyendas y titulos.
+#' @param value Valor a formatear.
+#' @return Cadena lista para mostrar.
+#' @keywords internal
+format_factor_value <- function(value) {
+  if (is.numeric(value)) {
+    format(round(value, 4), trim = TRUE, scientific = FALSE)
+  } else {
+    as.character(value)
+  }
+}
+
+#' @title Rango codificado observado
+#' @description Obtiene el rango util de una columna codificada.
+#' @param df Tabla de trabajo.
+#' @param coded_name Nombre de la columna codificada.
+#' @return Vector numerico de longitud 2.
+#' @keywords internal
+get_coded_range <- function(df, coded_name) {
+  values <- suppressWarnings(as.numeric(df[[coded_name]]))
+  values <- values[is.finite(values)]
+
+  if (length(values) < 1) {
+    return(c(-1, 1))
+  }
+
+  rng <- range(values)
+  if (diff(rng) <= 0) {
+    c(-1, 1)
+  } else {
+    rng
+  }
+}
+
+#' @title Decodificar valor de factor
+#' @description Convierte un valor codificado a unidades reales o niveles de factor.
+#' @param coded_values Vector de valores codificados.
+#' @param factor_row Fila de metadatos del factor.
+#' @return Vector con valores en escala de negocio.
+#' @keywords internal
+decode_factor_values <- function(coded_values, factor_row) {
+  if (identical(factor_row$Type, "Numerico")) {
+    decode_numeric_values(coded_values, factor_row)
+  } else {
+    ifelse(coded_values <= 0, factor_row$Low, factor_row$High)
+  }
+}
+
+#' @title Seleccionar pares de interaccion
+#' @description Detecta las interacciones modeladas con mayor magnitud para graficarlas.
+#' @param coef_df Tabla de coeficientes.
+#' @param factors Tabla de factores.
+#' @param max_pairs Numero maximo de pares a devolver.
+#' @return Lista de pares de indices de factores.
+#' @keywords internal
+select_interaction_pairs <- function(coef_df, factors, max_pairs = 6) {
+  interaction_rows <- coef_df[grepl(":", coef_df$Termino, fixed = TRUE), , drop = FALSE]
+  if (nrow(interaction_rows) < 1) {
+    return(list())
+  }
+
+  predictor_map <- stats::setNames(seq_len(nrow(factors)), paste0("coded_", factors$Column))
+  interaction_rows$abs_estimate <- abs(suppressWarnings(as.numeric(interaction_rows$Estimate)))
+  interaction_rows <- interaction_rows[order(interaction_rows$abs_estimate, decreasing = TRUE), , drop = FALSE]
+
+  pairs <- list()
+  seen_keys <- character()
+  for (term in interaction_rows$Termino) {
+    pieces <- trimws(strsplit(term, ":", fixed = TRUE)[[1]])
+    if (length(pieces) != 2 || !all(pieces %in% names(predictor_map))) {
+      next
+    }
+
+    pair_idx <- sort(unname(as.integer(predictor_map[pieces])))
+    key <- paste(pair_idx, collapse = ":")
+    if (key %in% seen_keys) {
+      next
+    }
+
+    seen_keys <- c(seen_keys, key)
+    pairs[[length(pairs) + 1]] <- pair_idx
+    if (length(pairs) >= max_pairs) {
+      break
+    }
+  }
+
+  pairs
+}
+
+#' @title Grafico de interaccion
+#' @description Construye un slice del modelo para visualizar la interaccion entre dos factores.
+#' @param fit Modelo ajustado.
+#' @param factors Tabla de factores.
+#' @param working_df Datos usados en el ajuste.
+#' @param factor_pair Vector con dos indices de factores.
+#' @param response_col Nombre de la respuesta.
+#' @return Objeto `ggplot`.
+#' @keywords internal
+build_interaction_plot <- function(fit, factors, working_df, factor_pair, response_col) {
+  x_row <- factors[factor_pair[[1]], , drop = FALSE]
+  trace_row <- factors[factor_pair[[2]], , drop = FALSE]
+  predictor_cols <- paste0("coded_", factors$Column)
+
+  x_range <- get_coded_range(working_df, paste0("coded_", x_row$Column))
+  trace_range <- get_coded_range(working_df, paste0("coded_", trace_row$Column))
+
+  x_coded <- if (identical(x_row$Type, "Numerico")) {
+    seq(x_range[[1]], x_range[[2]], length.out = 41)
+  } else {
+    c(-1, 1)
+  }
+  trace_coded_values <- if (identical(trace_row$Type, "Numerico")) {
+    c(trace_range[[1]], trace_range[[2]])
+  } else {
+    c(-1, 1)
+  }
+
+  base_grid <- as.data.frame(matrix(0, nrow = length(x_coded) * length(trace_coded_values), ncol = length(predictor_cols)))
+  names(base_grid) <- predictor_cols
+
+  plot_df <- base_grid
+  plot_df[[paste0("coded_", x_row$Column)]] <- rep(x_coded, times = length(trace_coded_values))
+  plot_df[[paste0("coded_", trace_row$Column)]] <- rep(trace_coded_values, each = length(x_coded))
+  plot_df$Prediccion <- stats::predict(fit, newdata = plot_df)
+
+  x_actual <- decode_factor_values(plot_df[[paste0("coded_", x_row$Column)]], x_row)
+  trace_actual <- decode_factor_values(plot_df[[paste0("coded_", trace_row$Column)]], trace_row)
+  plot_df$Serie <- sprintf("%s = %s", trace_row$Factor, vapply(trace_actual, format_factor_value, character(1)))
+
+  if (identical(x_row$Type, "Numerico")) {
+    plot_df$X <- as.numeric(x_actual)
+
+    ggplot2::ggplot(
+      plot_df,
+      ggplot2::aes(x = X, y = Prediccion, color = Serie, group = Serie)
+    ) +
+      ggplot2::geom_line(linewidth = 1) +
+      ggplot2::labs(
+        title = sprintf("Interaccion: %s vs %s", x_row$Factor, trace_row$Factor),
+        subtitle = sprintf("Respuesta estimada para %s", response_col),
+        x = x_row$Factor,
+        y = sprintf("Prediccion de %s", response_col),
+        color = trace_row$Factor
+      ) +
+      ggplot2::theme_minimal(base_size = 12)
+  } else {
+    level_order <- c(as.character(x_row$Low), as.character(x_row$High))
+    plot_df$X <- factor(as.character(x_actual), levels = level_order)
+
+    ggplot2::ggplot(
+      plot_df,
+      ggplot2::aes(x = X, y = Prediccion, color = Serie, group = Serie)
+    ) +
+      ggplot2::geom_line(linewidth = 0.9) +
+      ggplot2::geom_point(size = 2.7) +
+      ggplot2::labs(
+        title = sprintf("Interaccion: %s vs %s", x_row$Factor, trace_row$Factor),
+        subtitle = sprintf("Respuesta estimada para %s", response_col),
+        x = x_row$Factor,
+        y = sprintf("Prediccion de %s", response_col),
+        color = trace_row$Factor
+      ) +
+      ggplot2::theme_minimal(base_size = 12)
+  }
+}
+
+#' @title Construir graficos de interaccion
+#' @description Genera una coleccion de graficos de interaccion a partir del modelo ajustado.
+#' @param fit Modelo ajustado.
+#' @param factors Tabla de factores.
+#' @param working_df Datos usados en el ajuste.
+#' @param coef_df Tabla de coeficientes.
+#' @param response_col Nombre de la respuesta.
+#' @return Lista nombrada de objetos `ggplot`.
+#' @keywords internal
+build_interaction_plots <- function(fit, factors, working_df, coef_df, response_col) {
+  interaction_pairs <- select_interaction_pairs(coef_df, factors)
+  if (length(interaction_pairs) < 1) {
+    return(list())
+  }
+
+  stats::setNames(
+    lapply(interaction_pairs, function(pair_idx) {
+      build_interaction_plot(fit, factors, working_df, pair_idx, response_col)
+    }),
+    vapply(interaction_pairs, function(pair_idx) {
+      sprintf(
+        "Interaccion %s x %s",
+        factors$Factor[pair_idx[[1]]],
+        factors$Factor[pair_idx[[2]]]
+      )
+    }, character(1))
+  )
+}
+
+#' @title Grafico de contorno RSM
+#' @description Construye un contour plot para un par de factores numericos.
+#' @param fit Modelo ajustado.
+#' @param factors Tabla de factores.
+#' @param working_df Datos usados en el ajuste.
+#' @param factor_pair Vector con dos indices de factores numericos.
+#' @param response_col Nombre de la respuesta.
+#' @return Objeto `ggplot`.
+#' @keywords internal
+build_response_contour_plot <- function(fit, factors, working_df, factor_pair, response_col) {
+  x_row <- factors[factor_pair[[1]], , drop = FALSE]
+  y_row <- factors[factor_pair[[2]], , drop = FALSE]
+  predictor_cols <- paste0("coded_", factors$Column)
+
+  x_coded <- seq(get_coded_range(working_df, paste0("coded_", x_row$Column))[[1]], get_coded_range(working_df, paste0("coded_", x_row$Column))[[2]], length.out = 60)
+  y_coded <- seq(get_coded_range(working_df, paste0("coded_", y_row$Column))[[1]], get_coded_range(working_df, paste0("coded_", y_row$Column))[[2]], length.out = 60)
+
+  contour_grid <- expand.grid(
+    x_coded = x_coded,
+    y_coded = y_coded,
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  newdata <- as.data.frame(matrix(0, nrow = nrow(contour_grid), ncol = length(predictor_cols)))
+  names(newdata) <- predictor_cols
+  newdata[[paste0("coded_", x_row$Column)]] <- contour_grid$x_coded
+  newdata[[paste0("coded_", y_row$Column)]] <- contour_grid$y_coded
+
+  contour_grid$Prediccion <- stats::predict(fit, newdata = newdata)
+  contour_grid$X <- decode_numeric_values(contour_grid$x_coded, x_row)
+  contour_grid$Y <- decode_numeric_values(contour_grid$y_coded, y_row)
+
+  observed_points <- data.frame(
+    X = as.numeric(working_df[[x_row$Column]]),
+    Y = as.numeric(working_df[[y_row$Column]])
+  )
+
+  ggplot2::ggplot(contour_grid, ggplot2::aes(x = X, y = Y, z = Prediccion)) +
+    ggplot2::geom_raster(ggplot2::aes(fill = Prediccion), interpolate = TRUE, alpha = 0.9) +
+    ggplot2::geom_contour(color = "white", alpha = 0.75) +
+    ggplot2::geom_point(
+      data = observed_points,
+      mapping = ggplot2::aes(x = X, y = Y),
+      inherit.aes = FALSE,
+      shape = 21,
+      size = 2.2,
+      stroke = 0.4,
+      fill = "black",
+      color = "white"
+    ) +
+    ggplot2::scale_fill_gradientn(colors = c("#0f172a", "#1d4ed8", "#38bdf8", "#facc15", "#f97316")) +
+    ggplot2::labs(
+      title = sprintf("Contour: %s vs %s", x_row$Factor, y_row$Factor),
+      subtitle = sprintf("Respuesta estimada para %s con otros factores en centro", response_col),
+      x = x_row$Factor,
+      y = y_row$Factor,
+      fill = response_col
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+}
+
+#' @title Construir contour plots
+#' @description Genera contour plots para pares de factores numericos en modelos RSM.
+#' @param fit Modelo ajustado.
+#' @param factors Tabla de factores.
+#' @param working_df Datos usados en el ajuste.
+#' @param response_col Nombre de la respuesta.
+#' @param max_pairs Numero maximo de pares a graficar.
+#' @return Lista nombrada de objetos `ggplot`.
+#' @keywords internal
+build_response_contour_plots <- function(fit, factors, working_df, response_col, max_pairs = 6) {
+  numeric_idx <- which(factors$Type == "Numerico")
+  if (length(numeric_idx) < 2) {
+    return(list())
+  }
+
+  factor_pairs <- combn(numeric_idx, 2, simplify = FALSE)
+  factor_pairs <- factor_pairs[seq_len(min(length(factor_pairs), max_pairs))]
+
+  stats::setNames(
+    lapply(factor_pairs, function(pair_idx) {
+      build_response_contour_plot(fit, factors, working_df, pair_idx, response_col)
+    }),
+    vapply(factor_pairs, function(pair_idx) {
+      sprintf(
+        "Contour %s x %s",
+        factors$Factor[pair_idx[[1]]],
+        factors$Factor[pair_idx[[2]]]
+      )
+    }, character(1))
+  )
+}
+
 #' @title Ejecutar analisis DOE
 #' @description Ajusta un modelo sobre los datos ejecutados y genera tablas y graficos diagnosticos.
 #' @param plan_result Lista con el plan DOE.
@@ -1015,7 +1332,7 @@ build_qq_residuals_plot <- function(fit_df, response_col) {
 #' @return Lista estructurada con resumen, tablas, graficos y log del modelo.
 #' @keywords internal
 run_doe_analysis <- function(plan_result, execution_df, response_col) {
-  factors <- plan_result$factors
+  factors <- ensure_factor_metadata(plan_result$factors)
   working_df <- ensure_analysis_columns(execution_df, factors, response_col)
   working_df <- ensure_coded_columns(working_df, factors)
   predictor_cols <- paste0("coded_", factors$Column)
@@ -1058,6 +1375,13 @@ run_doe_analysis <- function(plan_result, execution_df, response_col) {
     `Residuales por corrida` = build_residuals_run_order_plot(fit_df, response_col),
     `QQ plot residuales` = build_qq_residuals_plot(fit_df, response_col)
   )
+  contour_plots <- if (plan_result$design_family %in% c("ccd", "box_behnken")) {
+    build_response_contour_plots(fit, factors, working_df, response_col)
+  } else {
+    list()
+  }
+  interaction_plots <- build_interaction_plots(fit, factors, working_df, coef_df, response_col)
+  plots <- c(plots, contour_plots, interaction_plots)
   plot_obj <- plots[[1]]
 
   list(
