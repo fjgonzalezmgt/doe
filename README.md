@@ -185,7 +185,6 @@ Cuando se solicita interpretacion, la app envia:
 - `server.R`: punto de entrada de servidor
 - `doe_engine.R`: motor DOE
 - `doe_openai.R`: interpretacion DOE con OpenAI
-- `openai_helpers.R`: wrapper de compatibilidad para helpers de OpenAI
 - `generate_doe_example_workbooks.R`: generador local de workbooks de ejemplo
 
 ## Limitaciones actuales
