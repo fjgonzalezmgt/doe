@@ -1,6 +1,15 @@
 #' @title Motor DOE para la app Shiny
+#' @description Funciones auxiliares para definir factores, generar planes DOE,
+#'   analizar respuestas y exportar workbooks de resultados.
+#' @keywords internal
 NULL
 
+#' @title Devolver valor por defecto
+#' @description Retorna un valor alterno cuando la entrada es `NULL` o cadena vacia.
+#' @param x Valor evaluado.
+#' @param default Valor a retornar si `x` no contiene un dato util.
+#' @return El valor original o el valor por defecto.
+#' @keywords internal
 or_default <- function(x, default) {
   if (is.null(x) || identical(x, "")) {
     default
@@ -9,14 +18,30 @@ or_default <- function(x, default) {
   }
 }
 
+#' @title Validar escalar faltante
+#' @description Indica si un objeto no contiene un valor escalar util.
+#' @param x Valor a validar.
+#' @return `TRUE` cuando el valor esta ausente o es `NA`.
+#' @keywords internal
 is_missing_scalar <- function(x) {
   length(x) < 1 || is.null(x) || (length(x) == 1 && is.na(x))
 }
 
+#' @title Verificar disponibilidad de paquete
+#' @description Comprueba si un paquete de R puede cargarse mediante `requireNamespace()`.
+#' @param pkg Nombre del paquete.
+#' @return `TRUE` si el paquete esta instalado.
+#' @keywords internal
 package_available <- function(pkg) {
   requireNamespace(pkg, quietly = TRUE)
 }
 
+#' @title Exigir paquete instalado
+#' @description Detiene la ejecucion si falta un paquete necesario para una tarea.
+#' @param pkg Nombre del paquete requerido.
+#' @param reason Motivo por el que el paquete es necesario.
+#' @return Invisiblemente `NULL`; produce error si el paquete no esta disponible.
+#' @keywords internal
 require_package <- function(pkg, reason) {
   if (!package_available(pkg)) {
     stop(
@@ -31,6 +56,15 @@ require_package <- function(pkg, reason) {
   }
 }
 
+#' @title Leer datos delimitados
+#' @description Lee archivos tabulares delimitados conservando nombres de columna originales.
+#' @param path Ruta del archivo.
+#' @param header Indica si la primera fila contiene encabezados.
+#' @param sep Separador de campos.
+#' @param quote Caracter de comillas.
+#' @param dec Separador decimal.
+#' @return `data.frame` con los datos importados.
+#' @keywords internal
 read_delimited_data <- function(path, header, sep, quote, dec) {
   utils::read.table(
     file = path,
@@ -43,6 +77,16 @@ read_delimited_data <- function(path, header, sep, quote, dec) {
   )
 }
 
+#' @title Leer datos de entrada
+#' @description Lee archivos CSV, TXT o Excel usados por la app para ejecucion y analisis.
+#' @param path Ruta del archivo.
+#' @param header Indica si la primera fila contiene encabezados.
+#' @param sep Separador de campos para archivos delimitados.
+#' @param quote Caracter de comillas para archivos delimitados.
+#' @param dec Separador decimal para archivos delimitados.
+#' @param sheet Hoja de Excel a leer cuando aplica.
+#' @return `data.frame` con los datos cargados.
+#' @keywords internal
 read_input_data <- function(path, header, sep, quote, dec, sheet = NULL) {
   ext <- tolower(tools::file_ext(path))
 
@@ -93,6 +137,10 @@ design_family_catalog <- list(
   )
 )
 
+#' @title Opciones de familias DOE
+#' @description Construye el vector nombrado usado por la UI para seleccionar la familia de diseno.
+#' @return Vector nombrado con ids internos y etiquetas visibles.
+#' @keywords internal
 design_family_choices <- function() {
   stats::setNames(names(design_family_catalog), vapply(
     design_family_catalog,
@@ -101,6 +149,10 @@ design_family_choices <- function() {
   ))
 }
 
+#' @title Estado de paquetes recomendados
+#' @description Genera una tabla con disponibilidad y uso de los paquetes de la app.
+#' @return `data.frame` con nombre del paquete, estado y uso.
+#' @keywords internal
 package_status_table <- function() {
   data.frame(
     Paquete = c("shiny", "bslib", "ggplot2", "readxl", "openxlsx", "FrF2", "DoE.base", "rsm"),
@@ -124,6 +176,11 @@ package_status_table <- function() {
   )
 }
 
+#' @title Sanitizar nombres
+#' @description Convierte etiquetas arbitrarias en nombres seguros y unicos para columnas.
+#' @param x Vector de nombres originales.
+#' @return Vector de nombres saneados.
+#' @keywords internal
 sanitize_name <- function(x) {
   cleaned <- gsub("[^A-Za-z0-9_]+", "_", trimws(x))
   cleaned <- gsub("^_+|_+$", "", cleaned)
@@ -131,6 +188,11 @@ sanitize_name <- function(x) {
   make.unique(cleaned, sep = "_")
 }
 
+#' @title Parsear definiciones de factores
+#' @description Convierte el texto ingresado por el usuario en una tabla de factores DOE.
+#' @param text Texto multilinea con formato `nombre, nivel_bajo, nivel_alto`.
+#' @return `data.frame` con metadatos de factores, niveles y codificacion base.
+#' @keywords internal
 parse_factor_definitions <- function(text) {
   lines <- trimws(unlist(strsplit(or_default(text, ""), "\n", fixed = TRUE)))
   lines <- lines[nzchar(lines)]
@@ -182,6 +244,11 @@ parse_factor_definitions <- function(text) {
   factors_df
 }
 
+#' @title Parsear nombres de respuestas
+#' @description Extrae y sanea los nombres de respuestas esperadas a partir de texto libre.
+#' @param text Texto con respuestas separadas por coma, salto de linea, tab o punto y coma.
+#' @return Vector de nombres de respuesta.
+#' @keywords internal
 parse_response_names <- function(text) {
   responses <- trimws(unlist(strsplit(or_default(text, ""), "[,;\n\t]")))
   responses <- responses[nzchar(responses)]
@@ -191,10 +258,20 @@ parse_response_names <- function(text) {
   sanitize_name(responses)
 }
 
+#' @title Columnas numericas
+#' @description Obtiene los nombres de las columnas numericas de un `data.frame`.
+#' @param df Tabla de datos.
+#' @return Vector de nombres de columna.
+#' @keywords internal
 numeric_column_names <- function(df) {
   names(df)[vapply(df, is.numeric, logical(1))]
 }
 
+#' @title Valores para selector de columnas
+#' @description Genera etiquetas con nombre y clase para usarlas en controles `selectInput`.
+#' @param df Tabla de datos.
+#' @return Vector nombrado apto para opciones de seleccion.
+#' @keywords internal
 column_choice_values <- function(df) {
   cols <- names(df)
   labels <- vapply(
@@ -205,6 +282,11 @@ column_choice_values <- function(df) {
   stats::setNames(cols, labels)
 }
 
+#' @title Convertir lista nombrada a tabla
+#' @description Transforma una lista simple en una tabla de metricas y valores.
+#' @param x Lista nombrada.
+#' @return `data.frame` con columnas `Metrica` y `Valor`.
+#' @keywords internal
 data_frame_from_named_list <- function(x) {
   if (length(x) < 1) {
     return(data.frame())
@@ -224,11 +306,22 @@ data_frame_from_named_list <- function(x) {
   )
 }
 
+#' @title Sanitizar nombre de hoja
+#' @description Elimina caracteres invalidos y limita la longitud para nombres de hojas Excel.
+#' @param x Nombre propuesto de hoja.
+#' @return Cadena compatible con Excel.
+#' @keywords internal
 sanitize_sheet_name <- function(x) {
   cleaned <- gsub("[\\\\/:*?\\[\\]]", "-", x)
   substr(cleaned, 1, 31)
 }
 
+#' @title Rellenar valor vacio
+#' @description Sustituye valores vacios por una etiqueta de ausencia.
+#' @param value Valor a validar.
+#' @param missing_label Texto a usar cuando el valor esta vacio.
+#' @return Cadena con el valor original o la etiqueta de ausencia.
+#' @keywords internal
 non_empty_value <- function(value, missing_label = "No definido") {
   if (is.null(value) || identical(value, "") || identical(value, "_none")) {
     missing_label
@@ -237,6 +330,15 @@ non_empty_value <- function(value, missing_label = "No definido") {
   }
 }
 
+#' @title Exportar grafico a archivo
+#' @description Guarda un objeto `ggplot` en disco con dimensiones predefinidas.
+#' @param plot_obj Objeto grafico.
+#' @param path Ruta destino.
+#' @param width Ancho en pulgadas.
+#' @param height Alto en pulgadas.
+#' @param dpi Resolucion de exportacion.
+#' @return Invisiblemente la ruta generada.
+#' @keywords internal
 build_plot_export <- function(plot_obj, path, width = 11, height = 7, dpi = 180) {
   ggplot2::ggsave(
     filename = path,
@@ -249,6 +351,11 @@ build_plot_export <- function(plot_obj, path, width = 11, height = 7, dpi = 180)
   invisible(path)
 }
 
+#' @title Construir instrucciones de ejecucion
+#' @description Genera la tabla de pasos operativos incluida en el workbook de ejecucion.
+#' @param plan_result Lista con el plan DOE generado.
+#' @return `data.frame` con pasos e instrucciones.
+#' @keywords internal
 build_execution_instruction_table <- function(plan_result) {
   response_text <- if (length(plan_result$responses) > 0) {
     paste(plan_result$responses, collapse = ", ")
@@ -270,10 +377,22 @@ build_execution_instruction_table <- function(plan_result) {
   )
 }
 
+#' @title Decodificar valores numericos
+#' @description Convierte niveles codificados a valores reales usando centro y paso del factor.
+#' @param coded_values Vector de valores codificados.
+#' @param factor_row Fila de metadatos del factor.
+#' @return Vector numerico en unidades reales.
+#' @keywords internal
 decode_numeric_values <- function(coded_values, factor_row) {
   factor_row$Center + coded_values * factor_row$Step
 }
 
+#' @title Reconstruir niveles reales
+#' @description Convierte una matriz codificada en un plan con niveles reales por factor.
+#' @param coded_df Tabla de valores codificados.
+#' @param factors Tabla de factores.
+#' @return `data.frame` con valores reales de corrida.
+#' @keywords internal
 build_actual_from_coded <- function(coded_df, factors) {
   actual_list <- vector("list", nrow(factors))
   names(actual_list) <- factors$Column
@@ -292,6 +411,13 @@ build_actual_from_coded <- function(coded_df, factors) {
   as.data.frame(actual_list, check.names = FALSE)
 }
 
+#' @title Agregar columnas codificadas
+#' @description Anexa al plan las columnas `coded_*` usadas para analisis posterior.
+#' @param plan_df Plan en unidades reales.
+#' @param coded_df Plan codificado.
+#' @param factors Tabla de factores.
+#' @return `data.frame` actualizado.
+#' @keywords internal
 append_coded_columns <- function(plan_df, coded_df, factors) {
   for (index in seq_len(nrow(factors))) {
     factor_row <- factors[index, ]
@@ -301,6 +427,12 @@ append_coded_columns <- function(plan_df, coded_df, factors) {
   plan_df
 }
 
+#' @title Agregar columnas de ejecucion
+#' @description Incorpora campos operativos y columnas de respuesta vacias al plan.
+#' @param plan_df Plan de corridas.
+#' @param responses Vector de respuestas esperadas.
+#' @return `data.frame` listo para captura de ejecucion.
+#' @keywords internal
 add_execution_columns <- function(plan_df, responses) {
   plan_df$run_status <- "Pendiente"
   plan_df$batch_id <- NA_character_
@@ -315,6 +447,18 @@ add_execution_columns <- function(plan_df, responses) {
   plan_df
 }
 
+#' @title Finalizar plan DOE
+#' @description Completa ordenes de corrida, columnas operativas y resumen del plan.
+#' @param plan_df Plan en unidades reales.
+#' @param coded_df Plan codificado.
+#' @param factors Tabla de factores.
+#' @param responses Vector de respuestas esperadas.
+#' @param design_family Identificador de la familia DOE.
+#' @param randomize Indica si se aleatoriza el orden de corrida.
+#' @param seed Semilla opcional para aleatorizacion.
+#' @param notes Nota descriptiva del plan.
+#' @return Lista estructurada con plan, factores, resumen y tablas.
+#' @keywords internal
 finalize_plan <- function(plan_df, coded_df, factors, responses, design_family, randomize, seed, notes = NULL) {
   plan_df$std_order <- seq_len(nrow(plan_df))
 
@@ -356,6 +500,16 @@ finalize_plan <- function(plan_df, coded_df, factors, responses, design_family, 
   )
 }
 
+#' @title Generar factorial completo
+#' @description Construye un plan factorial completo de dos niveles, con replicas y puntos centro opcionales.
+#' @param factors Tabla de factores.
+#' @param responses Vector de respuestas esperadas.
+#' @param randomize Indica si se aleatoriza el orden.
+#' @param seed Semilla opcional.
+#' @param replicates Numero de replicas por combinacion.
+#' @param center_points Numero de puntos centro.
+#' @return Lista con el plan DOE finalizado.
+#' @keywords internal
 build_full_factorial_plan <- function(factors, responses, randomize, seed, replicates = 1, center_points = 0) {
   level_grid <- rep(list(c(-1, 1)), nrow(factors))
   names(level_grid) <- factors$Column
@@ -385,6 +539,12 @@ build_full_factorial_plan <- function(factors, responses, randomize, seed, repli
   )
 }
 
+#' @title Extraer codigos de diseno
+#' @description Convierte la salida de paquetes DOE en una tabla numerica de columnas codificadas.
+#' @param design_df Tabla devuelta por el generador de diseno.
+#' @param factor_columns Nombres de columnas correspondientes a factores.
+#' @return `data.frame` con valores codificados numericos.
+#' @keywords internal
 extract_design_codes <- function(design_df, factor_columns) {
   coded_df <- data.frame(check.names = FALSE)
 
@@ -399,6 +559,15 @@ extract_design_codes <- function(design_df, factor_columns) {
   coded_df
 }
 
+#' @title Generar factorial fraccional
+#' @description Construye un plan fraccional de dos niveles mediante `FrF2`.
+#' @param factors Tabla de factores.
+#' @param responses Vector de respuestas esperadas.
+#' @param randomize Indica si se aleatoriza el orden.
+#' @param seed Semilla opcional.
+#' @param runs Numero de corridas.
+#' @return Lista con el plan DOE finalizado.
+#' @keywords internal
 build_fractional_factorial_plan <- function(factors, responses, randomize, seed, runs) {
   require_package("FrF2", "generar factoriales fraccionales")
 
@@ -428,6 +597,15 @@ build_fractional_factorial_plan <- function(factors, responses, randomize, seed,
   )
 }
 
+#' @title Generar diseno Plackett-Burman
+#' @description Construye un plan de screening usando `FrF2::pb()`.
+#' @param factors Tabla de factores.
+#' @param responses Vector de respuestas esperadas.
+#' @param randomize Indica si se aleatoriza el orden.
+#' @param seed Semilla opcional.
+#' @param runs Numero de corridas.
+#' @return Lista con el plan DOE finalizado.
+#' @keywords internal
 build_screening_plan <- function(factors, responses, randomize, seed, runs) {
   require_package("FrF2", "generar disenos Plackett-Burman")
 
@@ -453,6 +631,17 @@ build_screening_plan <- function(factors, responses, randomize, seed, runs) {
   )
 }
 
+#' @title Generar CCD
+#' @description Construye un Central Composite Design para factores numericos.
+#' @param factors Tabla de factores.
+#' @param responses Vector de respuestas esperadas.
+#' @param randomize Indica si se aleatoriza el orden.
+#' @param seed Semilla opcional.
+#' @param n0_cube Numero de puntos centro en la porcion factorial.
+#' @param n0_star Numero de puntos centro en la porcion axial.
+#' @param alpha Configuracion de alpha para `rsm::ccd()`.
+#' @return Lista con el plan DOE finalizado.
+#' @keywords internal
 build_ccd_plan <- function(factors, responses, randomize, seed, n0_cube = 4, n0_star = 4, alpha = "rotatable") {
   require_package("rsm", "generar un Central Composite Design")
 
@@ -484,6 +673,15 @@ build_ccd_plan <- function(factors, responses, randomize, seed, n0_cube = 4, n0_
   )
 }
 
+#' @title Generar Box-Behnken
+#' @description Construye un diseno Box-Behnken para modelado cuadratico.
+#' @param factors Tabla de factores.
+#' @param responses Vector de respuestas esperadas.
+#' @param randomize Indica si se aleatoriza el orden.
+#' @param seed Semilla opcional.
+#' @param center_points Numero de puntos centro.
+#' @return Lista con el plan DOE finalizado.
+#' @keywords internal
 build_bbd_plan <- function(factors, responses, randomize, seed, center_points = 4) {
   require_package("rsm", "generar un Box-Behnken")
 
@@ -518,6 +716,16 @@ build_bbd_plan <- function(factors, responses, randomize, seed, center_points = 
   )
 }
 
+#' @title Generar plan DOE
+#' @description Despacha la generacion del plan a la familia DOE seleccionada.
+#' @param design_family Identificador de la familia DOE.
+#' @param factors Tabla de factores.
+#' @param responses Vector de respuestas esperadas.
+#' @param randomize Indica si se aleatoriza el orden.
+#' @param seed Semilla opcional.
+#' @param control_values Lista de parametros especificos de la familia.
+#' @return Lista con el plan DOE finalizado.
+#' @keywords internal
 generate_doe_plan <- function(design_family, factors, responses, randomize, seed, control_values) {
   switch(
     design_family,
@@ -563,6 +771,12 @@ generate_doe_plan <- function(design_family, factors, responses, randomize, seed
   )
 }
 
+#' @title Preparar dataset para analisis
+#' @description Devuelve los datos subidos por el usuario o, si no existen, el plan actual.
+#' @param plan_result Lista con el plan DOE.
+#' @param uploaded_data Datos de ejecucion cargados opcionalmente.
+#' @return `data.frame` o `NULL`.
+#' @keywords internal
 coerce_analysis_dataset <- function(plan_result, uploaded_data = NULL) {
   if (!is.null(uploaded_data)) {
     return(as.data.frame(uploaded_data, check.names = FALSE))
@@ -575,6 +789,12 @@ coerce_analysis_dataset <- function(plan_result, uploaded_data = NULL) {
   as.data.frame(plan_result$plan, check.names = FALSE)
 }
 
+#' @title Recomendar columnas de respuesta
+#' @description Identifica columnas numericas candidatas a respuesta excluyendo factores y metadatos.
+#' @param df Tabla de datos.
+#' @param factors Tabla de factores.
+#' @return Vector de nombres de columnas recomendadas.
+#' @keywords internal
 recommended_response_columns <- function(df, factors) {
   if (is.null(df)) {
     return(character())
@@ -591,6 +811,13 @@ recommended_response_columns <- function(df, factors) {
   setdiff(numeric_cols, excluded)
 }
 
+#' @title Validar columnas para analisis
+#' @description Comprueba que existan factores y respuesta, y que haya suficientes corridas observadas.
+#' @param df Tabla de datos de ejecucion.
+#' @param factors Tabla de factores.
+#' @param response_col Nombre de la respuesta a modelar.
+#' @return `data.frame` filtrado a corridas con respuesta observada.
+#' @keywords internal
 ensure_analysis_columns <- function(df, factors, response_col) {
   required <- c(factors$Column, response_col)
   missing_cols <- setdiff(required, names(df))
@@ -614,6 +841,12 @@ ensure_analysis_columns <- function(df, factors, response_col) {
   visible_df
 }
 
+#' @title Asegurar columnas codificadas
+#' @description Crea columnas `coded_*` faltantes a partir de niveles reales.
+#' @param df Tabla de datos.
+#' @param factors Tabla de factores.
+#' @return `data.frame` con columnas codificadas disponibles.
+#' @keywords internal
 ensure_coded_columns <- function(df, factors) {
   for (index in seq_len(nrow(factors))) {
     factor_row <- factors[index, ]
@@ -633,6 +866,13 @@ ensure_coded_columns <- function(df, factors) {
   df
 }
 
+#' @title Construir formula de efectos
+#' @description Genera una formula lineal con efectos principales e interacciones de segundo orden opcionales.
+#' @param response_col Nombre de la respuesta.
+#' @param predictors Vector de predictores.
+#' @param include_interactions Indica si deben incluirse interacciones de primer orden.
+#' @return Objeto `formula`.
+#' @keywords internal
 build_effect_formula <- function(response_col, predictors, include_interactions = TRUE) {
   base_terms <- paste(predictors, collapse = " + ")
   if (length(predictors) > 1 && isTRUE(include_interactions)) {
@@ -642,6 +882,12 @@ build_effect_formula <- function(response_col, predictors, include_interactions 
   }
 }
 
+#' @title Construir formula RSM
+#' @description Genera una formula cuadratica para superficies de respuesta.
+#' @param response_col Nombre de la respuesta.
+#' @param predictors Vector de predictores codificados.
+#' @return Objeto `formula`.
+#' @keywords internal
 build_rsm_formula <- function(response_col, predictors) {
   if (length(predictors) == 1) {
     return(stats::as.formula(sprintf("%s ~ %s + I(%s^2)", response_col, predictors, predictors)))
@@ -652,6 +898,12 @@ build_rsm_formula <- function(response_col, predictors) {
   stats::as.formula(sprintf("%s ~ %s + %s", response_col, main_and_twi, quadratic))
 }
 
+#' @title Grafico de coeficientes
+#' @description Construye un grafico de barras con los coeficientes estimados del modelo.
+#' @param coef_df Tabla de coeficientes.
+#' @param title Titulo del grafico.
+#' @return Objeto `ggplot`.
+#' @keywords internal
 build_coefficient_plot <- function(coef_df, title) {
   plot_df <- coef_df[coef_df$Termino != "(Intercept)", , drop = FALSE]
 
@@ -670,6 +922,12 @@ build_coefficient_plot <- function(coef_df, title) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
+#' @title Grafico observado vs ajustado
+#' @description Dibuja la comparacion entre respuesta observada y valor ajustado.
+#' @param fit_df Tabla con observados, ajustados y residuales.
+#' @param response_col Nombre de la respuesta.
+#' @return Objeto `ggplot`.
+#' @keywords internal
 build_observed_vs_fitted_plot <- function(fit_df, response_col) {
   ggplot2::ggplot(
     fit_df,
@@ -685,6 +943,12 @@ build_observed_vs_fitted_plot <- function(fit_df, response_col) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
+#' @title Grafico residuales vs ajustados
+#' @description Dibuja residuales frente a valores ajustados para revisar patrones.
+#' @param fit_df Tabla con observados, ajustados y residuales.
+#' @param response_col Nombre de la respuesta.
+#' @return Objeto `ggplot`.
+#' @keywords internal
 build_residuals_vs_fitted_plot <- function(fit_df, response_col) {
   ggplot2::ggplot(
     fit_df,
@@ -700,6 +964,12 @@ build_residuals_vs_fitted_plot <- function(fit_df, response_col) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
+#' @title Grafico residuales por orden
+#' @description Dibuja residuales contra el orden de corrida para detectar deriva temporal.
+#' @param fit_df Tabla con observados, ajustados y residuales.
+#' @param response_col Nombre de la respuesta.
+#' @return Objeto `ggplot`.
+#' @keywords internal
 build_residuals_run_order_plot <- function(fit_df, response_col) {
   ggplot2::ggplot(
     fit_df,
@@ -716,6 +986,12 @@ build_residuals_run_order_plot <- function(fit_df, response_col) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
+#' @title QQ plot de residuales
+#' @description Dibuja un grafico QQ para revisar normalidad aproximada de los residuales.
+#' @param fit_df Tabla con observados, ajustados y residuales.
+#' @param response_col Nombre de la respuesta.
+#' @return Objeto `ggplot`.
+#' @keywords internal
 build_qq_residuals_plot <- function(fit_df, response_col) {
   ggplot2::ggplot(
     fit_df,
@@ -731,6 +1007,13 @@ build_qq_residuals_plot <- function(fit_df, response_col) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
+#' @title Ejecutar analisis DOE
+#' @description Ajusta un modelo sobre los datos ejecutados y genera tablas y graficos diagnosticos.
+#' @param plan_result Lista con el plan DOE.
+#' @param execution_df Tabla con datos de ejecucion.
+#' @param response_col Nombre de la respuesta a analizar.
+#' @return Lista estructurada con resumen, tablas, graficos y log del modelo.
+#' @keywords internal
 run_doe_analysis <- function(plan_result, execution_df, response_col) {
   factors <- plan_result$factors
   working_df <- ensure_analysis_columns(execution_df, factors, response_col)
@@ -810,6 +1093,14 @@ run_doe_analysis <- function(plan_result, execution_df, response_col) {
   )
 }
 
+#' @title Exportar workbook DOE
+#' @description Escribe un workbook Excel con plan, analisis, graficos e interpretacion.
+#' @param path Ruta del archivo a crear.
+#' @param plan_result Lista con el plan DOE.
+#' @param analysis_result Resultado del analisis, opcional.
+#' @param interpretation_text Texto de interpretacion asistida, opcional.
+#' @return Invisiblemente la ruta exportada.
+#' @keywords internal
 write_doe_export_workbook <- function(path, plan_result, analysis_result = NULL, interpretation_text = NULL) {
   require_package("openxlsx", "exportar resultados a Excel")
 
@@ -891,6 +1182,12 @@ write_doe_export_workbook <- function(path, plan_result, analysis_result = NULL,
   invisible(path)
 }
 
+#' @title Exportar workbook de ejecucion
+#' @description Escribe una plantilla Excel para capturar resultados de corrida en planta o laboratorio.
+#' @param path Ruta del archivo a crear.
+#' @param plan_result Lista con el plan DOE.
+#' @return Invisiblemente la ruta exportada.
+#' @keywords internal
 write_doe_execution_workbook <- function(path, plan_result) {
   require_package("openxlsx", "exportar resultados a Excel")
 

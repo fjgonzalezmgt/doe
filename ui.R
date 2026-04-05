@@ -1,9 +1,17 @@
 #' @title UI DOE workbench
+#' @description Definicion de la interfaz de usuario para planear, ejecutar y
+#'   analizar disenos de experimentos industriales.
+#' @keywords internal
 NULL
 
 library(shiny)
 library(bslib)
 
+#' @title Interfaz de la app DOE
+#' @description Objeto de interfaz Shiny con panel lateral de configuracion y
+#'   pestanas para plan, ejecucion, analisis, graficos e interpretacion.
+#' @return Objeto UI de Shiny.
+#' @keywords internal
 ui <- page_sidebar(
   title = "DOE Industrial Workbench",
   fillable = TRUE,

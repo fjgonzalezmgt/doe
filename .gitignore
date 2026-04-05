@@ -36,3 +36,4 @@ Thumbs.db
 
 # Local example generator
 generate_example_doe.R
+generate_doe_example_workbooks.R

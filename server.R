@@ -1,6 +1,16 @@
 #' @title Server DOE workbench
+#' @description Logica reactiva del servidor para generar planes DOE, cargar
+#'   ejecuciones, correr analisis y exportar resultados.
+#' @keywords internal
 NULL
 
+#' @title Servidor de la app DOE
+#' @description Define reactivos, validaciones, descargas y flujo de analisis de la aplicacion Shiny.
+#' @param input Lista reactiva de entradas de usuario.
+#' @param output Lista reactiva de salidas renderizadas.
+#' @param session Sesion activa de Shiny.
+#' @return Invisiblemente el resultado de registrar salidas y observadores.
+#' @keywords internal
 server <- function(input, output, session) {
   analysis_state <- reactiveVal(NULL)
 

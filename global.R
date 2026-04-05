@@ -1,4 +1,6 @@
 #' @title Punto de entrada global para DOE Industrial Workbench
+#' @description Carga dependencias base y sourcea los archivos de logica compartida
+#'   para la aplicacion Shiny.
 #' @keywords internal
 NULL
 

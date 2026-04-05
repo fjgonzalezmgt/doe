@@ -1,6 +1,14 @@
 #' @title Helpers OpenAI para DOE
+#' @description Utilidades para serializar resultados DOE y solicitar una
+#'   interpretacion asistida a la API de OpenAI.
+#' @keywords internal
 NULL
 
+#' @title Sanitizar resultado de analisis
+#' @description Reduce el resultado del analisis a una estructura serializable y estable para la API.
+#' @param analysis_result Lista devuelta por `run_doe_analysis()`.
+#' @return Lista simple con metadatos, resumen y tablas.
+#' @keywords internal
 sanitize_analysis_result <- function(analysis_result) {
   list(
     analysis_id = analysis_result$analysis_id,
@@ -16,6 +24,11 @@ sanitize_analysis_result <- function(analysis_result) {
   )
 }
 
+#' @title Codificar imagen como data URL
+#' @description Convierte una imagen local en una URL base64 compatible con la API de OpenAI.
+#' @param image_path Ruta de la imagen.
+#' @return Cadena `data:` con el contenido codificado.
+#' @keywords internal
 encode_image_data_url <- function(image_path) {
   require_package("base64enc", "codificar imagenes para OpenAI")
 
@@ -32,6 +45,11 @@ encode_image_data_url <- function(image_path) {
   paste0("data:", mime_type, ";base64,", base64enc::base64encode(image_path))
 }
 
+#' @title Extraer texto de respuesta
+#' @description Recupera el texto util desde distintos formatos de respuesta de la API.
+#' @param body Cuerpo JSON parseado de la respuesta.
+#' @return Cadena con el texto generado o `NULL`.
+#' @keywords internal
 extract_response_text <- function(body) {
   if (!is.null(body$output_text) && is.character(body$output_text) && nzchar(body$output_text)) {
     return(body$output_text)
@@ -71,6 +89,16 @@ extract_response_text <- function(body) {
   NULL
 }
 
+#' @title Interpretar analisis con OpenAI
+#' @description Envia el resultado del analisis DOE y sus graficos a la API de OpenAI
+#'   para obtener una interpretacion ejecutiva.
+#' @param analysis_result Lista devuelta por `run_doe_analysis()`.
+#' @param plot_path Ruta opcional de un grafico individual.
+#' @param plot_paths Vector opcional de rutas de graficos.
+#' @param language Idioma de la interpretacion.
+#' @param extra_instructions Instrucciones adicionales para el modelo.
+#' @return Texto de interpretacion o JSON serializado si no se pudo extraer texto directo.
+#' @keywords internal
 openai_interpret_analysis <- function(analysis_result, plot_path = NULL, plot_paths = NULL, language = "es", extra_instructions = "") {
   require_package("httr2", "consultar la API de OpenAI")
   require_package("jsonlite", "serializar resultados")
