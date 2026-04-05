@@ -249,6 +249,27 @@ build_plot_export <- function(plot_obj, path, width = 11, height = 7, dpi = 180)
   invisible(path)
 }
 
+build_execution_instruction_table <- function(plan_result) {
+  response_text <- if (length(plan_result$responses) > 0) {
+    paste(plan_result$responses, collapse = ", ")
+  } else {
+    "No definidas"
+  }
+
+  data.frame(
+    Paso = as.character(seq_len(5)),
+    Instruccion = c(
+      "Completa la hoja Plan_corridas con los resultados reales de cada corrida.",
+      "Mantiene intactas las columnas del plan y llena run_status, batch_id, operator_id, timestamp y comments.",
+      sprintf("Registra las respuestas en las columnas esperadas: %s.", response_text),
+      "Guarda el archivo y cargalo luego en la seccion Ejecucion de la app.",
+      "Selecciona la hoja Plan_corridas y pulsa Analizar DOE."
+    ),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
 decode_numeric_values <- function(coded_values, factor_row) {
   factor_row$Center + coded_values * factor_row$Step
 }
@@ -649,6 +670,67 @@ build_coefficient_plot <- function(coef_df, title) {
     ggplot2::theme_minimal(base_size = 12)
 }
 
+build_observed_vs_fitted_plot <- function(fit_df, response_col) {
+  ggplot2::ggplot(
+    fit_df,
+    ggplot2::aes(x = Ajustado, y = Observado)
+  ) +
+    ggplot2::geom_point(size = 2.8, color = "#1d4ed8", alpha = 0.85) +
+    ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "#6b7280") +
+    ggplot2::labs(
+      title = sprintf("Observado vs ajustado: %s", response_col),
+      x = "Valor ajustado",
+      y = "Valor observado"
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+}
+
+build_residuals_vs_fitted_plot <- function(fit_df, response_col) {
+  ggplot2::ggplot(
+    fit_df,
+    ggplot2::aes(x = Ajustado, y = Residual)
+  ) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "#6b7280") +
+    ggplot2::geom_point(size = 2.8, color = "#b45309", alpha = 0.85) +
+    ggplot2::labs(
+      title = sprintf("Residuales vs ajustados: %s", response_col),
+      x = "Valor ajustado",
+      y = "Residual"
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+}
+
+build_residuals_run_order_plot <- function(fit_df, response_col) {
+  ggplot2::ggplot(
+    fit_df,
+    ggplot2::aes(x = run_order, y = Residual)
+  ) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "#6b7280") +
+    ggplot2::geom_line(color = "#0f766e", linewidth = 0.7) +
+    ggplot2::geom_point(size = 2.5, color = "#0f766e") +
+    ggplot2::labs(
+      title = sprintf("Residuales por orden de corrida: %s", response_col),
+      x = "Orden de corrida",
+      y = "Residual"
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+}
+
+build_qq_residuals_plot <- function(fit_df, response_col) {
+  ggplot2::ggplot(
+    fit_df,
+    ggplot2::aes(sample = Residual)
+  ) +
+    ggplot2::stat_qq(color = "#7c3aed", size = 2.2, alpha = 0.85) +
+    ggplot2::stat_qq_line(color = "#111827", linetype = "dashed") +
+    ggplot2::labs(
+      title = sprintf("QQ plot de residuales: %s", response_col),
+      x = "Cuantiles teoricos",
+      y = "Cuantiles muestrales"
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+}
+
 run_doe_analysis <- function(plan_result, execution_df, response_col) {
   factors <- plan_result$factors
   working_df <- ensure_analysis_columns(execution_df, factors, response_col)
@@ -678,7 +760,22 @@ run_doe_analysis <- function(plan_result, execution_df, response_col) {
   row.names(coef_df) <- NULL
   coef_df <- coef_df[, c("Termino", setdiff(names(coef_df), "Termino")), drop = FALSE]
 
-  plot_obj <- build_coefficient_plot(coef_df, sprintf("Efectos estimados: %s", response_col))
+  fit_df <- data.frame(
+    run_order = if ("run_order" %in% names(working_df)) working_df$run_order else seq_len(nrow(working_df)),
+    Observado = working_df[[response_col]],
+    Ajustado = stats::fitted(fit),
+    Residual = stats::residuals(fit),
+    check.names = FALSE
+  )
+
+  plots <- list(
+    `Efectos estimados` = build_coefficient_plot(coef_df, sprintf("Efectos estimados: %s", response_col)),
+    `Observado vs ajustado` = build_observed_vs_fitted_plot(fit_df, response_col),
+    `Residuales vs ajustados` = build_residuals_vs_fitted_plot(fit_df, response_col),
+    `Residuales por corrida` = build_residuals_run_order_plot(fit_df, response_col),
+    `QQ plot residuales` = build_qq_residuals_plot(fit_df, response_col)
+  )
+  plot_obj <- plots[[1]]
 
   list(
     analysis_id = "doe_analysis",
@@ -698,11 +795,13 @@ run_doe_analysis <- function(plan_result, execution_df, response_col) {
       R2_ajustado = round(or_default(fit_summary$adj.r.squared, NA_real_), 4),
       RMSE = round(sqrt(mean(stats::residuals(fit)^2, na.rm = TRUE)), 4)
     ),
-    tables = list(
+      tables = list(
       ANOVA = anova_df,
       Coeficientes = coef_df,
-      `Corridas analizadas` = working_df
+      `Corridas analizadas` = working_df,
+      `Ajustados y residuales` = fit_df
     ),
+    plots = plots,
     plot_obj = plot_obj,
     build_plot = function(path) {
       build_plot_export(plot_obj, path = path)
@@ -750,10 +849,31 @@ write_doe_export_workbook <- function(path, plan_result, analysis_result = NULL,
       openxlsx::setColWidths(wb, target_sheet, cols = seq_len(max(1, ncol(table_df))), widths = "auto")
     }
 
-    openxlsx::addWorksheet(wb, "Grafico")
-    plot_path <- tempfile(fileext = ".png")
-    analysis_result$build_plot(plot_path)
-    openxlsx::insertImage(wb, "Grafico", plot_path, startRow = 2, startCol = 2, width = 10, height = 7, units = "in")
+    openxlsx::addWorksheet(wb, "Graficos")
+    plot_list <- analysis_result$plots
+    if (is.null(plot_list) || length(plot_list) < 1) {
+      plot_list <- list(Principal = analysis_result$plot_obj)
+    }
+
+    current_row <- 2
+    for (plot_name in names(plot_list)) {
+      plot_path <- tempfile(fileext = ".png")
+      build_plot_export(plot_list[[plot_name]], plot_path, width = 10, height = 6)
+      openxlsx::writeData(wb, "Graficos", x = plot_name, startRow = current_row, startCol = 2)
+      openxlsx::addStyle(wb, "Graficos", title_style, rows = current_row, cols = 2, gridExpand = FALSE, stack = TRUE)
+      openxlsx::insertImage(
+        wb,
+        "Graficos",
+        plot_path,
+        startRow = current_row + 1,
+        startCol = 2,
+        width = 10,
+        height = 6,
+        units = "in"
+      )
+      current_row <- current_row + 32
+    }
+    openxlsx::setColWidths(wb, "Graficos", cols = 1:3, widths = c(3, 18, 3))
   }
 
   openxlsx::addWorksheet(wb, "Interpretacion")
@@ -766,6 +886,49 @@ write_doe_export_workbook <- function(path, plan_result, analysis_result = NULL,
   openxlsx::addStyle(wb, "Interpretacion", body_style, rows = 2, cols = 1, gridExpand = TRUE, stack = TRUE)
   openxlsx::setColWidths(wb, "Interpretacion", cols = 1, widths = 120)
   openxlsx::setRowHeights(wb, "Interpretacion", rows = 2, heights = 100)
+
+  openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+  invisible(path)
+}
+
+write_doe_execution_workbook <- function(path, plan_result) {
+  require_package("openxlsx", "exportar resultados a Excel")
+
+  wb <- openxlsx::createWorkbook()
+  title_style <- openxlsx::createStyle(textDecoration = "bold", fgFill = "#DCE6F1")
+
+  summary_df <- data_frame_from_named_list(plan_result$summary)
+  factors_df <- plan_result$tables$Factores
+  plan_df <- plan_result$plan
+  instructions_df <- build_execution_instruction_table(plan_result)
+
+  openxlsx::addWorksheet(wb, "Resumen_plan")
+  openxlsx::writeData(wb, "Resumen_plan", x = summary_df, rowNames = FALSE)
+
+  openxlsx::addWorksheet(wb, "Factores")
+  openxlsx::writeData(wb, "Factores", x = factors_df, rowNames = FALSE)
+
+  openxlsx::addWorksheet(wb, "Plan_corridas")
+  openxlsx::writeData(wb, "Plan_corridas", x = plan_df, rowNames = FALSE)
+
+  openxlsx::addWorksheet(wb, "Instrucciones")
+  openxlsx::writeData(wb, "Instrucciones", x = instructions_df, rowNames = FALSE)
+
+  for (sheet_name in c("Resumen_plan", "Factores", "Plan_corridas", "Instrucciones")) {
+    sheet_df <- switch(
+      sheet_name,
+      Resumen_plan = summary_df,
+      Factores = factors_df,
+      Plan_corridas = plan_df,
+      Instrucciones = instructions_df
+    )
+    openxlsx::addStyle(wb, sheet_name, title_style, rows = 1, cols = seq_len(max(1, ncol(sheet_df))), gridExpand = TRUE)
+  }
+
+  openxlsx::setColWidths(wb, "Resumen_plan", cols = 1:2, widths = "auto")
+  openxlsx::setColWidths(wb, "Factores", cols = seq_len(ncol(factors_df)), widths = "auto")
+  openxlsx::setColWidths(wb, "Plan_corridas", cols = seq_len(ncol(plan_df)), widths = "auto")
+  openxlsx::setColWidths(wb, "Instrucciones", cols = 1:2, widths = c(10, 110))
 
   openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
   invisible(path)

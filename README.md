@@ -7,7 +7,7 @@
 ![OpenAI](https://img.shields.io/badge/AI-OpenAI-412991?logo=openai&logoColor=white)
 ![Excel](https://img.shields.io/badge/Output-Excel-217346?logo=microsoft-excel&logoColor=white)
 
-Aplicacion Shiny para planear, ejecutar y analizar disenos de experimentos (DOE) a nivel industrial. La app ayuda a definir factores y niveles, generar el plan experimental, cargar resultados ejecutados, ajustar modelos DOE y exportar un workbook consolidado.
+Aplicacion Shiny para planear, ejecutar y analizar disenos de experimentos (DOE) a nivel industrial. La app ayuda a definir factores y niveles, generar el plan experimental, descargar una plantilla operativa para ejecucion, cargar resultados ejecutados, ajustar modelos DOE y exportar un reporte consolidado.
 
 ## Alcance
 
@@ -31,16 +31,24 @@ La app esta orientada a tres momentos del trabajo experimental:
 2. Define una o varias respuestas esperadas.
 3. Selecciona la familia DOE y sus controles.
 4. Genera el plan con aleatorizacion opcional.
-5. Descarga el workbook DOE.
+5. Descarga el workbook de ejecucion desde la pestana `Plan`.
 6. Ejecuta las corridas y captura resultados.
 7. Carga el archivo ejecutado en la app.
 8. Selecciona una respuesta y corre el analisis.
-9. Revisa ANOVA, coeficientes, grafico e interpretacion opcional.
-10. Exporta el workbook consolidado.
+9. Revisa tablas, diagnosticos y graficos en las pestanas `Analisis` y `Graficos`.
+10. Genera interpretacion opcional con OpenAI.
+11. Exporta el reporte DOE consolidado.
 
-## Archivo de ejemplo
+## Archivos de ejemplo
 
-El proyecto incluye `doe_example_workbook.xlsx`, un ejemplo listo para probar la app.
+El proyecto incluye workbooks listos para probar cada familia de diseno:
+
+- `doe_example_workbook.xlsx`: ejemplo base, equivalente al factorial completo
+- `doe_example_full_factorial.xlsx`
+- `doe_example_fractional_factorial.xlsx`
+- `doe_example_plackett_burman.xlsx`
+- `doe_example_ccd.xlsx`
+- `doe_example_box_behnken.xlsx`
 
 Contenido:
 
@@ -49,17 +57,19 @@ Contenido:
 - `Plan_corridas`: corridas con respuestas capturadas
 - `Instrucciones`: pasos sugeridos para validar el flujo
 
-Para probar la app con este archivo, carga la hoja `Plan_corridas` como archivo de ejecucion y analiza `Yield` o `DefectRate`.
+Los ejemplos usan respuestas simuladas para producir senales mas creibles segun el tipo de DOE. Para probar la app, carga cualquiera de esos archivos en `Ejecucion`, selecciona la hoja `Plan_corridas` y analiza la respuesta principal del workbook.
 
 ## Funcionalidades
 
 - definicion rapida de factores numericos y categoricos de dos niveles
 - generacion de plan con orden estandar y orden de corrida
 - columnas operativas para ejecucion: estado, lote, operador, timestamp y comentarios
+- descarga de workbook de ejecucion desde `Plan`, con formato cargable por la propia app
 - soporte para respuestas numericas capturadas en el workbook
 - ajuste de modelos DOE para efectos e interacciones
 - ajuste de modelos de segundo orden para disenos RSM
-- exportacion a Excel del plan y del analisis
+- pestana dedicada de `Graficos` con multiples diagnosticos
+- exportacion a Excel del plan de ejecucion y del reporte de analisis
 - interpretacion opcional con OpenAI
 
 ## Stack
@@ -139,7 +149,18 @@ Las salidas actuales incluyen:
 - tabla de coeficientes
 - corridas analizadas
 - grafico de coeficientes
+- observado vs ajustado
+- residuales vs ajustados
+- residuales por orden de corrida
+- QQ plot de residuales
 - traza textual del modelo
+
+## Exportaciones
+
+La app ofrece dos salidas distintas:
+
+- `Descargar workbook de ejecucion`: genera la plantilla operativa desde la pestana `Plan`. Ese archivo es el que luego se vuelve a cargar en `Ejecucion`.
+- `Descargar reporte DOE`: genera un workbook consolidado con resumen del plan, tablas del analisis, todos los graficos disponibles e interpretacion si existe.
 
 ## OpenAI
 
@@ -156,7 +177,7 @@ Cuando se solicita interpretacion, la app envia:
 
 - resumen del analisis
 - tablas del modelo
-- grafico exportado
+- todos los graficos del analisis disponibles
 
 ## Estructura del proyecto
 
@@ -164,16 +185,15 @@ Cuando se solicita interpretacion, la app envia:
 - `ui.R`: punto de entrada de interfaz
 - `server.R`: punto de entrada de servidor
 - `doe_engine.R`: motor DOE
-- `doe_ui.R`: interfaz DOE
-- `doe_server.R`: logica reactiva DOE
 - `doe_openai.R`: interpretacion DOE con OpenAI
 - `openai_helpers.R`: wrapper de compatibilidad para helpers de OpenAI
+- `generate_doe_example_workbooks.R`: generador local de workbooks de ejemplo
 
 ## Limitaciones actuales
 
 - el analisis es monorespuesta por corrida; cada respuesta se analiza por separado
 - no hay manejo formal de bloques, split-plot o restricciones de aleatorizacion
-- la app no calcula todavia estructura de alias ni diagnosticos avanzados de residuos
+- la app no calcula todavia estructura formal de alias ni bloqueo industrial
 - los caminos `FrF2` y `rsm` dependen de que esos paquetes esten instalados en el entorno
 - la interpretacion con OpenAI no sustituye criterio estadistico o de proceso
 

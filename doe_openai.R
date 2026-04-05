@@ -71,7 +71,7 @@ extract_response_text <- function(body) {
   NULL
 }
 
-openai_interpret_analysis <- function(analysis_result, plot_path = NULL, language = "es", extra_instructions = "") {
+openai_interpret_analysis <- function(analysis_result, plot_path = NULL, plot_paths = NULL, language = "es", extra_instructions = "") {
   require_package("httr2", "consultar la API de OpenAI")
   require_package("jsonlite", "serializar resultados")
 
@@ -97,12 +97,22 @@ openai_interpret_analysis <- function(analysis_result, plot_path = NULL, languag
   )
 
   message_content <- list(list(type = "input_text", text = prompt_text))
-  if (!is.null(plot_path) && file.exists(plot_path)) {
-    message_content[[length(message_content) + 1]] <- list(
-      type = "input_image",
-      image_url = encode_image_data_url(plot_path),
-      detail = "high"
-    )
+
+  image_paths <- character()
+  if (!is.null(plot_paths)) {
+    image_paths <- plot_paths[file.exists(plot_paths)]
+  } else if (!is.null(plot_path) && file.exists(plot_path)) {
+    image_paths <- plot_path
+  }
+
+  if (length(image_paths) > 0) {
+    for (image_path in image_paths) {
+      message_content[[length(message_content) + 1]] <- list(
+        type = "input_image",
+        image_url = encode_image_data_url(image_path),
+        detail = "high"
+      )
+    }
   }
 
   payload <- list(

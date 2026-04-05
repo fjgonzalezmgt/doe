@@ -32,3 +32,6 @@ Thumbs.db
 
 # Editor settings
 .vscode/
+
+# Local example generator
+generate_example_doe.R
