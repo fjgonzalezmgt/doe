@@ -180,7 +180,6 @@ Cuando se solicita interpretacion, la app envia:
 
 ## Estructura del proyecto
 
-- `global.R`: punto de entrada global
 - `ui.R`: punto de entrada de interfaz
 - `server.R`: punto de entrada de servidor
 - `doe_engine.R`: motor DOE

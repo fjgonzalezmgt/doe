@@ -4,6 +4,9 @@
 #' @keywords internal
 NULL
 
+source("doe_engine.R", local = TRUE)
+source("doe_openai.R", local = TRUE)
+
 #' @title Servidor de la app DOE
 #' @description Define reactivos, validaciones, descargas y flujo de analisis de la aplicacion Shiny.
 #' @param input Lista reactiva de entradas de usuario.

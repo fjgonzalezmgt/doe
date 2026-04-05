@@ -7,6 +7,8 @@ NULL
 library(shiny)
 library(bslib)
 
+source("doe_engine.R", local = TRUE)
+
 #' @title Interfaz de la app DOE
 #' @description Objeto de interfaz Shiny con panel lateral de configuracion y
 #'   pestanas para plan, ejecucion, analisis, graficos e interpretacion.
